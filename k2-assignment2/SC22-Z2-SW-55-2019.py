@@ -84,32 +84,32 @@ def winner(output):
     return max(enumerate(output), key=lambda x: x[1])[0]
 
 
-def fix_letters(regions_array, img_bin):
-    no_holes_array = [regions_array[0]]
+def merge_regions_into_letters(regions_array, img_bin):
+    letters = [regions_array[0]]
 
-    for i in range(1, len(regions_array)):
-        x, y, w, h = regions_array[i][1]
-        x_, y_, w_, h_ = regions_array[i - 1][1]
+    for r_i in range(1, len(regions_array)):
+        x, y, w, h = regions_array[r_i][1]
+        x_, y_, w_, h_ = regions_array[r_i - 1][1]
 
-        if y_ > y + h and x > x_ and (x + w) < (x_ + w_):
-            no_holes_array.pop(-1)
+        if y_ > y + h and x > x_ and (x + w) < (x_ + w_):  # merges dots with i-s
+            letters.pop(-1)
             i_region = img_bin[y:y_ + h_ + 1, x_:x_ + w_ + 1]
-            no_holes_array.append([resize_region(i_region), (x_, y, w_, y_ + h_ - y)])
+            letters.append([resize_region(i_region), (x_, y, w_, y_ + h_ - y)])
 
-        elif not (x_ <= x and (x + w) <= (x_ + w_) and y_ <= y and (y + h) <= (y_ + h_)):
-            no_holes_array.append(regions_array[i])
+        elif not (x_ <= x and (x + w) <= (x_ + w_) and y_ <= y and (y + h) <= (y_ + h_)):  # removes holes in letters
+            letters.append(regions_array[r_i])
 
-    return no_holes_array
+    return letters
 
 
-def draw_regions(image_orig, regions_array):
+def draw_regions(image_orig, regions_array):  # draws all regions on image
     for region in regions_array:
         x, y, w, h = region[1]
         cv2.rectangle(image_orig, (x, y), (x + w, y + h), (0, 255, 0), 2)
     return image_orig
 
 
-def display_result(outputs, alphabet):
+def display_result(outputs, alphabet):  # retturns letters as a string
     result = ""
     for output in outputs:
         result += alphabet[winner(output)]
@@ -126,8 +126,8 @@ def select_roi_with_distances(image_orig, img_bin):
             region = img_bin[y:y + h + 1, x:x + w + 1]
             regions_array.append([resize_region(region), (x, y, w, h)])
 
-    regions_array = sorted(regions_array, key=lambda x: x[1][0])
-    regions_array = fix_letters(regions_array, img_bin)
+    regions_array = sorted(regions_array, key=lambda r: r[1][0])
+    regions_array = merge_regions_into_letters(regions_array, img_bin)
     image_orig = draw_regions(image_orig, regions_array)
 
     sorted_regions = [region[0] for region in regions_array]
@@ -153,7 +153,7 @@ def display_result_with_spaces(outputs, alphabet, k_means):
     return result
 
 
-def hamming_distance(string1, string2):
+def hamming_distance(string1, string2):  # calculates Hamming distance of two strings
     distance = 0
     shorter = string1 if len(string1) < len(string2) else string2
     longer = string2 if len(string1) < len(string2) else string1
@@ -172,7 +172,7 @@ alphabet = [
 all_letters = []
 
 image_color = load_image(folder_path + '/a1.jpg')
-img = image_bin(image_gray(image_color))
+img = image_bin(image_gray(load_image(folder_path + '/a1.jpg')))
 _, letters, _ = select_roi_with_distances(image_color.copy(), img)
 letters.pop(10)
 all_letters.extend(letters)
@@ -217,6 +217,7 @@ img = image_bin(image_gray(image_color))
 _, letters, _ = select_roi_with_distances(image_color.copy(), img)
 all_letters.extend([letters[0]])
 
+
 inputs = prepare_for_ann(all_letters)
 outputs = convert_output(alphabet)
 ann = create_ann(output_size=len(all_letters))
@@ -247,7 +248,7 @@ for i in range(len(file_names)):
         solution = display_result(result, alphabet)
 
     mae += hamming_distance(solution, correct_solutions[i])
-    print(f"{file_names[i]} - {correct_solutions[i]} - {solution}")
+    print("{} - {} - {}".format(file_names[i], correct_solutions[i], solution))
 
 print(mae)
 
