@@ -1,0 +1,13 @@
+file, text
+a1.jpg, Arbeitsplatz
+e1.jpg, Erster Platz
+e2.jpg, Erfolgsstrasse
+e3.jpg, Erlebnispfad
+e4.jpg, Erkenntnispfad
+l1.jpg, Lebensweg
+m1.jpg, Marktplatz
+s1.jpg, Siegerstrasse
+u1.jpg, Umschlagplatz
+v1.jpg, Verbindungsweg
+w1.jpg, Wirtschaftsweg
+w2.jpg, Waschstrasse
