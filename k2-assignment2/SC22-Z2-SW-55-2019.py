@@ -1,19 +1,11 @@
 import sys
-import csv
-
-import numpy as np
-import cv2 # OpenCV
-import matplotlib
-import matplotlib.pyplot as plt
-import collections
-
+import cv2
 import pandas
-from tensorflow import keras
+import numpy as np
+import matplotlib.pyplot as plt
+from keras.layers import Dense
 from keras.models import Sequential
-from keras.layers.core import Dense, Activation
-
 from tensorflow.keras.optimizers import SGD
-
 from sklearn.cluster import KMeans
 
 
@@ -27,10 +19,9 @@ def image_gray(image):
 
 def image_bin(image_gs):
     height, width = image_gs.shape[0:2]
-    image_binary = np.ndarray((height, width), dtype=np.uint8)
-    # ret, image_bin = cv2.threshold(image_gs, 127, 255, cv2.THRESH_BINARY)
-    image_bin = cv2.adaptiveThreshold(image_gs, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 187, 3)
-    return image_bin
+    img_bin = np.ndarray((height, width), dtype=np.uint8)
+    img_bin = cv2.adaptiveThreshold(image_gs, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 187, 3)
+    return img_bin
 
 
 def display_image(image, color=False):
@@ -46,7 +37,7 @@ def resize_region(region):
 
 
 def scale_to_range(image):
-    return image/255
+    return image / 255
 
 
 def matrix_to_vector(image):
@@ -77,14 +68,14 @@ def create_ann(output_size):
     return ann
 
 
-def train_ann(ann, X_train, y_train, epochs):
-    X_train = np.array(X_train, np.float32)  # dati ulaz
-    y_train = np.array(y_train, np.float32)  # zeljeni izlazi na date ulaze
+def train_ann(ann, x_train, y_train, epochs):
+    x_train = np.array(x_train, np.float32)
+    y_train = np.array(y_train, np.float32)
 
     print("\nTraining started...")
     sgd = SGD(learning_rate=0.01, momentum=0.9)
     ann.compile(loss='mean_squared_error', optimizer=sgd)
-    ann.fit(X_train, y_train, epochs=epochs, batch_size=1, verbose=0, shuffle=False)
+    ann.fit(x_train, y_train, epochs=epochs, batch_size=1, verbose=0, shuffle=False)
     print("\nTraining completed...")
     return ann
 
@@ -121,31 +112,28 @@ def draw_regions(image_orig, regions_array):
 def display_result(outputs, alphabet):
     result = ""
     for output in outputs:
-        # result.append(alphabet[winner(output)])
         result += alphabet[winner(output)]
     return result
 
 
-def select_roi_with_distances(image_orig, image_bin):
-    contours, hierarchy = cv2.findContours(image_bin.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+def select_roi_with_distances(image_orig, img_bin):
+    contours, hierarchy = cv2.findContours(img_bin.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     regions_array = []
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour)
         area = cv2.contourArea(contour)
         if (1600 > area > 200 and h > 30 and w > 15) or (15 > h > 9 and 15 > w > 9):
-            # print(area, ":", w, ",", h)
-            region = image_bin[y:y + h + 1, x:x + w + 1]
+            region = img_bin[y:y + h + 1, x:x + w + 1]
             regions_array.append([resize_region(region), (x, y, w, h)])
 
     regions_array = sorted(regions_array, key=lambda x: x[1][0])
-    regions_array = fix_letters(regions_array, image_bin)
+    regions_array = fix_letters(regions_array, img_bin)
     image_orig = draw_regions(image_orig, regions_array)
 
     sorted_regions = [region[0] for region in regions_array]
     sorted_rectangles = [region[1] for region in regions_array]
+
     region_distances = []
-    # izdvojiti sortirane parametre opisujucih pravougaonika
-    # izracunati rastojanja izmedju svih susednih regiona po X osi i dodati ih u niz rastojanja
     for index in range(0, len(sorted_rectangles) - 1):
         current = sorted_rectangles[index]
         next_rect = sorted_rectangles[index + 1]
@@ -156,11 +144,8 @@ def select_roi_with_distances(image_orig, image_bin):
 
 
 def display_result_with_spaces(outputs, alphabet, k_means):
-    # odredjivanje indeksa grupe koja odgovara rastojanju izmedju reci
     w_space_group = max(enumerate(k_means.cluster_centers_), key=lambda x: x[1])[0]
     result = alphabet[winner(outputs[0])]
-    # iterativno dodavanje prepoznatih elemenata
-    # dodavanje space karaktera ako je rastojanje izmedju dva slova odgovara rastojanju izmedju reci
     for idx, output in enumerate(outputs[1:, :]):
         if k_means.labels_[idx] == w_space_group:
             result += ' '
@@ -168,11 +153,18 @@ def display_result_with_spaces(outputs, alphabet, k_means):
     return result
 
 
-folder_path = sys.argv[1]
-df = pandas.read_csv(folder_path + '/res.txt', sep=", ", engine="python")
-file_names = df['file'].to_list()
-correct_solutions = df['text'].to_list()
+def hamming_distance(string1, string2):
+    distance = 0
+    shorter = string1 if len(string1) < len(string2) else string2
+    longer = string2 if len(string1) < len(string2) else string1
+    for i in range(len(shorter)):
+        if shorter[i] != longer[i]:
+            distance += 1
+    distance += len(longer) - len(shorter)
+    return distance
 
+
+folder_path = sys.argv[1]
 alphabet = [
     'A', 'r', 'b', 'e', 'i', 't', 's', 'p', 'l', 'a', 'z', 'E', 'P', 'f', 'o', 'g', 'ss', 'L', 'n', 'w', 'M', 'k', 'S',
     'U', 'm', 'c', 'h', 'V', 'd', 'u', 'W',
@@ -228,24 +220,34 @@ all_letters.extend([letters[0]])
 inputs = prepare_for_ann(all_letters)
 outputs = convert_output(alphabet)
 ann = create_ann(output_size=len(all_letters))
-ann = train_ann(ann, inputs, outputs, epochs=2000)
+ann = train_ann(ann, inputs, outputs, epochs=2500)
 
-# train_file_names = ['a1.jpg', 'e1.jpg', 'e2.jpg', 'e3.jpg', 'e4.jpg', 'l1.jpg', 'm1.jpg', 's1.jpg', 'u1.jpg', 'v1.jpg', 'w1.jpg', 'w2.jpg']
-for file_name in file_names:
-    image_color = load_image(folder_path + '/' + file_name)
+
+df = pandas.read_csv(folder_path + '/res.txt', sep=", ", engine="python")
+file_names = df['file'].to_list()
+correct_solutions = df['text'].to_list()
+
+mae = 0
+for i in range(len(file_names)):
+    image_color = load_image(folder_path + '/' + file_names[i])
     img = image_bin(image_gray(image_color))
     selected_regions, letters, distances = select_roi_with_distances(image_color.copy(), img)
-    display_image(selected_regions, True)
+    # display_image(selected_regions, True)
 
-    if file_name == 'e1.jpg':
+    if file_names[i] == 'e1.jpg':
         distances = np.array(distances).reshape(len(distances), 1)
         k_means = KMeans(n_clusters=2)
         k_means.fit(distances)
         inputs = prepare_for_ann(letters)
         result = ann.predict(np.array(inputs, np.float32))
-        print(display_result_with_spaces(result, alphabet, k_means))
+        solution = display_result_with_spaces(result, alphabet, k_means)
     else:
         inputs = prepare_for_ann(letters)
         result = ann.predict(np.array(inputs, np.float32))
-        print(display_result(result, alphabet))
+        solution = display_result(result, alphabet)
+
+    mae += hamming_distance(solution, correct_solutions[i])
+    print(f"{file_names[i]} - {correct_solutions[i]} - {solution}")
+
+print(mae)
 
